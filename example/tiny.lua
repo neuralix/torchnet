@@ -30,15 +30,18 @@ local net = nn.Sequential():add(nn.Linear(784, 10))
 local crit = nn.CrossEntropyCriterion()
 local engine = tnt.SGDEngine()
 local meter = tnt.AverageValueMeter()
+local clerr = tnt.ClassErrorMeter({topk={1}})
 
 engine.hooks.onStartEpoch = function(state)
    meter:reset()
+   clerr:reset()
 end
    
 engine.hooks.onForwardCriterion = function(state)
    meter:add(state.criterion.output)
+   clerr:add(state.network.output, state.sample.target)
    if state.training then
-      print(string.format('%2.2f', meter:value()))
+      print(string.format('%2.2f, %2.2f', meter:value(), clerr:value{k = 1}))
    end
 end
 
@@ -67,3 +70,5 @@ engine:test{
    criterion = crit,
    iterator = getIterator('test'),
 }
+
+print(string.format('test:%2.2f, %2.2f', meter:value(), clerr:value{k = 1}))
