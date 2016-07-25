@@ -1,47 +1,35 @@
-tnt = require 'torchnet'
+local tnt = require 'torchnet'
 
-mnist = require 'mnist'
+local function getIterator(mode)
+   return tnt.ParallelDatasetIterator{
+      nthread = 1,
+      init = function() require 'torchnet' end,
+      closure = function()
+         mnist = require 'mnist'
+         dataset = mnist[mode .. 'dataset']()
+         dataset.data = dataset.data:reshape(dataset.data:size(1),
+            dataset.data:size(2) * dataset.data:size(3)):double()
 
-traindataset = mnist['traindataset']()
-traindataset.data = traindataset.data:reshape(traindataset.data:size(1),
-            traindataset.data:size(2) * traindataset.data:size(3)):double()
-
-testdataset = mnist['testdataset']()
-testdataset.data = testdataset.data:reshape(testdataset.data:size(1),
-            testdataset.data:size(2) * testdataset.data:size(3)):double()
-
-function getTrainIterator()
-   return tnt.DatasetIterator{ 
-      dataset = tnt.ListDataset{
-         list = torch.range(1, traindataset.data:size(1)):long(),            
-         load = function(idx)
-            return {
-               input  = traindataset.data,
-               target = traindataset.label + 1,
+         return tnt.BatchDataset{ 
+            batchsize = 128,
+            dataset = tnt.ListDataset{
+               list = torch.range(1, dataset.data:size(1)):long(),            
+               load = function(idx)
+                  return {
+                     input  = dataset.data[idx],
+                     target = torch.LongTensor{dataset.label[idx] + 1},
+                  }
+               end,
             }
-         end,
-      }
+         }
+      end,
    }
 end
 
-function getTestIterator()
-   return tnt.DatasetIterator{ 
-      dataset = tnt.ListDataset{
-         list = torch.range(1, testdataset.data:size(1)):long(),            
-         load = function(idx)
-            return {
-               input  = testdataset.data,
-               target = testdataset.label + 1,
-            }
-         end,
-      }
-   }
-end
-
-net = nn.Sequential():add(nn.Linear(784, 10))
-crit = nn.CrossEntropyCriterion()
-engine = tnt.SGDEngine()
-meter = tnt.AverageValueMeter()
+local net = nn.Sequential():add(nn.Linear(784, 10))
+local crit = nn.CrossEntropyCriterion()
+local engine = tnt.SGDEngine()
+local meter = tnt.AverageValueMeter()
 
 engine.hooks.onForwardCriterion = function(state)
    meter:add(state.criterion.output)
@@ -50,11 +38,10 @@ engine.hooks.onForwardCriterion = function(state)
    end
 end
 
-
 engine:train{
    network = net,
    criterion = crit,
-   iterator = getTrainIterator(),
+   iterator = getIterator('train'),
    lr = 0.2,
    maxepoch = 1,
 }
@@ -62,5 +49,5 @@ engine:train{
 engine:test{
    network = net,
    criterion = crit,
-   iterator = getTestIterator(),
+   iterator = getIterator('test'),
 }
