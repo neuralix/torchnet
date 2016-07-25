@@ -11,7 +11,7 @@ local function getIterator(mode)
             dataset.data:size(2) * dataset.data:size(3)):double()
 
          return tnt.BatchDataset{ 
-            batchsize = 128,
+            batchsize = 1000,
             dataset = tnt.ListDataset{
                list = torch.range(1, dataset.data:size(1)):long(),            
                load = function(idx)
@@ -36,12 +36,30 @@ engine.hooks.onStartEpoch = function(state)
    meter:reset()
    clerr:reset()
 end
-   
+  
+iter = 0
+epoch = 0
 engine.hooks.onForwardCriterion = function(state)
+   iter = iter + 1
    meter:add(state.criterion.output)
    clerr:add(state.network.output, state.sample.target)
    if state.training then
-      print(string.format('%2.2f, %2.2f', meter:value(), clerr:value{k = 1}))
+      dummy = 1
+      print(string.format('%d:%2.2f [iter:loss]', iter, meter:value()))
+   end
+end
+
+engine.hooks.onEndEpoch = function(state)
+   epoch = epoch + 1
+   meter:add(state.criterion.output)
+   clerr:add(state.network.output, state.sample.target)
+   if state.training then
+      engine:test{
+         network = net,
+         criterion = crit,
+         iterator = getIterator('test'),
+      }
+      print(string.format('%d:%2.2f [epoch:validation error]\n', epoch,clerr:value{k = 1}))
    end
 end
 
@@ -62,7 +80,7 @@ engine:train{
    criterion = crit,
    iterator = getIterator('train'),
    lr = 0.2,
-   maxepoch = 1,
+   maxepoch = 3,
 }
 
 engine:test{
@@ -70,5 +88,3 @@ engine:test{
    criterion = crit,
    iterator = getIterator('test'),
 }
-
-print(string.format('test:%2.2f, %2.2f', meter:value(), clerr:value{k = 1}))
