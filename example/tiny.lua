@@ -32,13 +32,16 @@ local engine = tnt.SGDEngine()
 local meter = tnt.AverageValueMeter()
 local clerr = tnt.ClassErrorMeter({topk={1}})
 
+iter = 0
+old_iter = 0
+epoch = 0
+
 engine.hooks.onStartEpoch = function(state)
+   iter = old_iter
    meter:reset()
    clerr:reset()
 end
   
-iter = 0
-epoch = 0
 engine.hooks.onForwardCriterion = function(state)
    iter = iter + 1
    meter:add(state.criterion.output)
@@ -50,6 +53,7 @@ engine.hooks.onForwardCriterion = function(state)
 end
 
 engine.hooks.onEndEpoch = function(state)
+   old_iter = iter
    epoch = epoch + 1
    meter:add(state.criterion.output)
    clerr:add(state.network.output, state.sample.target)
@@ -83,8 +87,3 @@ engine:train{
    maxepoch = 3,
 }
 
-engine:test{
-   network = net,
-   criterion = crit,
-   iterator = getIterator('test'),
-}
