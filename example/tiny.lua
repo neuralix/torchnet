@@ -31,6 +31,10 @@ local crit = nn.CrossEntropyCriterion()
 local engine = tnt.SGDEngine()
 local meter = tnt.AverageValueMeter()
 
+engine.hooks.onStartEpoch = function(state)
+   meter:reset()
+end
+   
 engine.hooks.onForwardCriterion = function(state)
    meter:add(state.criterion.output)
    if state.training then
