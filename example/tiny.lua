@@ -42,6 +42,18 @@ engine.hooks.onForwardCriterion = function(state)
    end
 end
 
+require 'cunn'
+net = net:cuda()
+crit = crit:cuda()
+engine.hooks.onSample = function(state)
+   state.sample.input = torch.CudaTensor():
+      resize(state.sample.input:size()):
+      copy(state.sample.input)
+   state.sample.target = torch.CudaTensor():
+      resize(state.sample.target:size()):
+      copy(state.sample.target)
+end
+
 engine:train{
    network = net,
    criterion = crit,
