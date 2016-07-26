@@ -1,14 +1,53 @@
 local tnt = require 'torchnet'
 
+flag_mnist = false 
+
 local function getIterator(mode)
    return tnt.ParallelDatasetIterator{
       nthread = 1,
       init = function() require 'torchnet' end,
       closure = function()
-         mnist = require 'mnist'
-         dataset = mnist[mode .. 'dataset']()
-         dataset.data = dataset.data:reshape(dataset.data:size(1),
-            dataset.data:size(2) * dataset.data:size(3)):double()
+         if flag_mnist then
+            mnist = require 'mnist'
+            dataset = mnist[mode .. 'dataset']()
+            dataset.data = dataset.data:reshape(dataset.data:size(1),
+               dataset.data:size(2) * dataset.data:size(3)):double()
+         else
+            if not paths.dirp('cifar-10-batches-t7') then
+               print '==> downloading dataset'
+               tar = 'http://torch7.s3-website-us-east-1.amazonaws.com/data/cifar10.t7.tgz'
+               os.execute('wget ' .. tar)
+               os.execute('tar xvf ' .. paths.basename(tar))
+            end
+            if mode == 'train' then
+               size = 50000
+               dataset = {
+                  data = torch.Tensor(size, 3*32*32),
+                  labels = torch.Tensor(size)
+               }
+               dataset.data = torch.Tensor(size, 3*32*32)
+               dataset.labels = torch.Tensor(size)
+               for i = 0,4 do
+                  subset = torch.load('cifar-10-batches-t7/data_batch_' .. (i+1) .. '.t7', 'ascii')
+                  dataset.data[{ {i*10000+1, (i+1)*10000} }] = subset.data:t()
+                  dataset.labels[{ {i*10000+1, (i+1)*10000} }] = subset.labels
+               end
+               dataset.labels = dataset.labels + 1
+            else
+               size = 2000
+               dataset = {
+                  data = torch.Tensor(size, 3*32*32),
+                  labels = torch.Tensor(size)
+               }
+               subset = torch.load('cifar-10-batches-t7/test_batch.t7', 'ascii')
+               dataset.data = subset.data:t():double()
+               dataset.labels = subset.labels[1]:double()
+               dataset.labels = dataset.labels + 1
+            end
+            -- resize dataset (if using small version)
+            dataset.data = dataset.data[{ {1,size} }]
+            dataset.labels = dataset.labels[{ {1,size} }]
+         end
 
          return tnt.BatchDataset{ 
             batchsize = 1000,
@@ -17,7 +56,7 @@ local function getIterator(mode)
                load = function(idx)
                   return {
                      input  = dataset.data[idx],
-                     target = torch.LongTensor{dataset.label[idx] + 1},
+                     target = torch.LongTensor{dataset.labels[idx] + 1},
                   }
                end,
             }
@@ -26,7 +65,12 @@ local function getIterator(mode)
    }
 end
 
-local net = nn.Sequential():add(nn.Linear(784, 10))
+local net = nil
+if flag_mnist then
+   net = nn.Sequential():add(nn.Linear(784, 10))
+else
+   net = nn.Sequential():add(nn.Linear(3*32*32, 10))
+end
 local crit = nn.CrossEntropyCriterion()
 local engine = tnt.SGDEngine()
 local meter = tnt.AverageValueMeter()
@@ -48,7 +92,7 @@ engine.hooks.onForwardCriterion = function(state)
    clerr:add(state.network.output, state.sample.target)
    if state.training then
       dummy = 1
-      print(string.format('%d:%2.2f [iter:loss]', iter, meter:value()))
+      --print(string.format('%d:%2.2f [iter:loss]', iter, meter:value()))
    end
 end
 
@@ -63,7 +107,7 @@ engine.hooks.onEndEpoch = function(state)
          criterion = crit,
          iterator = getIterator('test'),
       }
-      print(string.format('%d:%2.2f [epoch:validation error]\n', epoch,clerr:value{k = 1}))
+      print(string.format('%d:%2.2f [epoch:validation error]', epoch,clerr:value{k = 1}))
    end
 end
 
@@ -84,6 +128,6 @@ engine:train{
    criterion = crit,
    iterator = getIterator('train'),
    lr = 0.2,
-   maxepoch = 3,
+   maxepoch = 100000,
 }
 
