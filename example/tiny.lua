@@ -72,11 +72,47 @@ else
    channels = 3
    net = nn.Sequential()
    net:add(nn.Reshape(3*32*32))
-   net:add(nn.Linear(3*32*32, 2048))
-   net:add(nn.Tanh())
-   net:add(nn.Linear(2048,10))
+   net:add(nn.Linear(3*32*32, 10))
 end
-local crit = nn.CrossEntropyCriterion()
+
+--[[
+local orig = net:get(#net.modules)
+assert(torch.type(orig) == 'nn.Linear',
+   'expected last layer to be fully connected')
+
+local linear = nn.Linear(3*32*32, 10)
+linear.bias:zero()
+net:remove(#net.modules)
+net:add(linear:cuda())
+]]
+
+-- Set the CUDNN flags
+require 'cunn'
+require 'cudnn'
+cudnn.fastest = true
+cudnn.benchmark = true
+
+-- Wrap the model with DataParallelTable, if using more than one GPU
+local gpus = torch.range(1,1):totable()
+local fastest, benchmark = cudnn.fastest, cudnn.benchmark
+
+local dpt = nn.DataParallelTable(1, true, true)
+   :add(model, gpus)
+   :threads(function()
+      local cudnn = require 'cudnn'
+      cudnn.fastest, cudnn.benchmark = fastest, benchmark
+   end)
+dpt.gradInput = nil
+
+net = dpt:cuda()
+
+local crit = nn.CrossEntropyCriterion():cuda()
+--local crit = nn.CrossEntropyCriterion()
+
+
+
+
+
 local engine = tnt.SGDEngine()
 local meter = tnt.AverageValueMeter()
 local clerr = tnt.ClassErrorMeter({topk={1}})
