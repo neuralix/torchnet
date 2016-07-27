@@ -117,6 +117,13 @@ engine.hooks.onEndEpoch = function(state)
       file = io.open('trend.log', 'a+')
       file:write(string.format('%2.2f\n', clerr:value{k = 1}))
       file:close()
+
+      local modelFile = 'net_' .. epoch .. '.t7'
+      local stateFile = 'state_' .. epoch .. '.t7'
+
+      if epoch % 100 == 0 then
+         torch.save(modelFile, state.network)
+      end
    end
 end
 
