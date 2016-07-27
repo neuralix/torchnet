@@ -69,7 +69,12 @@ local net = nil
 if flag_mnist then
    net = nn.Sequential():add(nn.Linear(784, 10))
 else
-   net = nn.Sequential():add(nn.Linear(3*32*32, 10))
+   channels = 3
+   net = nn.Sequential()
+   net:add(nn.Reshape(3*32*32))
+   net:add(nn.Linear(3*32*32, 2048))
+   net:add(nn.Tanh())
+   net:add(nn.Linear(2048,10))
 end
 local crit = nn.CrossEntropyCriterion()
 local engine = tnt.SGDEngine()
@@ -108,6 +113,10 @@ engine.hooks.onEndEpoch = function(state)
          iterator = getIterator('test'),
       }
       print(string.format('%d:%2.2f [epoch:validation error]', epoch,clerr:value{k = 1}))
+
+      file = io.open('trend.log', 'a+')
+      file:write(string.format('%2.2f\n', clerr:value{k = 1}))
+      file:close()
    end
 end
 
@@ -123,11 +132,15 @@ engine.hooks.onSample = function(state)
       copy(state.sample.target)
 end
 
+file = io.open('trend.log', 'a+')
+file:write(string.format('last\n'))
+file:close()
+
 engine:train{
    network = net,
    criterion = crit,
    iterator = getIterator('train'),
-   lr = 0.2,
+   lr = 0.01,
    maxepoch = 100000,
 }
 
